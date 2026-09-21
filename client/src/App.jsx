@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
-const socket = io();
+const socket = io("https://realtime-chat-urq5.onrender.com");
 
 function App() {
   const [connected, setConnected] = useState(false);
