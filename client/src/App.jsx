@@ -5,7 +5,7 @@ const socket = io("https://realtime-chat-urq5.onrender.com");
 
 function App() {
   const [connected, setConnected] = useState(false);
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => localStorage.getItem("chat_username") || "");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const endRef = useRef(null);
@@ -121,7 +121,11 @@ function App() {
           <input
             placeholder="Enter your username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setUsername(value);
+              localStorage.setItem("chat_username", value);
+            }}
           />
         </div>
 
