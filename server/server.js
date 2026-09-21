@@ -16,7 +16,12 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
+    methods: ["GET", "POST"],
   },
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
 });
 
 const pool = new Pool({
@@ -24,16 +29,37 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 app.get("/", (req, res) => {
-  res.send("Chat server is running!");
+  res.json({
+    status: "ok",
+    service: "Real Time Chat Server",
+  });
+});
+
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+
+    res.json({
+      status: "healthy",
+      database: "connected",
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: "unhealthy",
+      database: "disconnected",
+    });
+  }
 });
 
 io.on("connection", async (socket) => {
-  console.log("A user connected:", socket.id);
+  console.log("User connected:", socket.id);
 
-  // Send recent messages to the newly connected user.
   try {
     const result = await pool.query(`
       SELECT
@@ -46,13 +72,20 @@ io.on("connection", async (socket) => {
       LIMIT 50
     `);
 
-    for (const message of result.rows) {
-      socket.emit("chat_message", message);
-    }
+    socket.emit("chat_history", result.rows);
 
-    console.log(`Loaded ${result.rows.length} messages for ${socket.id}`);
+    console.log(
+      `Loaded ${result.rows.length} messages for ${socket.id}`
+    );
   } catch (error) {
-    console.error("Failed to load messages:", error.message);
+    console.error(
+      "Failed to load message history:",
+      error.message
+    );
+
+    socket.emit("server_error", {
+      message: "Unable to load chat history.",
+    });
   }
 
   socket.on("chat_message", async (data) => {
@@ -60,11 +93,27 @@ io.on("connection", async (socket) => {
     const message = String(data?.message || "").trim();
 
     if (!username || !message) {
+      socket.emit("server_error", {
+        message: "Username and message are required.",
+      });
+      return;
+    }
+
+    if (username.length > 50) {
+      socket.emit("server_error", {
+        message: "Username is too long.",
+      });
+      return;
+    }
+
+    if (message.length > 2000) {
+      socket.emit("server_error", {
+        message: "Message is too long.",
+      });
       return;
     }
 
     try {
-      // Save the message first.
       const result = await pool.query(
         `
         INSERT INTO "message" ("username", "content")
@@ -80,17 +129,27 @@ io.on("connection", async (socket) => {
 
       const savedMessage = result.rows[0];
 
-      console.log("Message saved:", savedMessage);
+      console.log(
+        `Message saved: ${username}: ${message}`
+      );
 
-      // Then send the saved message to every connected user.
       io.emit("chat_message", savedMessage);
     } catch (error) {
-      console.error("Failed to save message:", error.message);
+      console.error(
+        "Failed to save message:",
+        error.message
+      );
+
+      socket.emit("server_error", {
+        message: "Message could not be saved.",
+      });
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log("A user disconnected:", socket.id);
+  socket.on("disconnect", (reason) => {
+    console.log(
+      `User disconnected: ${socket.id} (${reason})`
+    );
   });
 });
 
@@ -101,11 +160,27 @@ pool
   .then(() => {
     console.log("PostgreSQL connected successfully");
 
-    server.listen(PORT, () => {
+    server.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((error) => {
-    console.error("PostgreSQL connection failed:", error.message);
+    console.error(
+      "PostgreSQL connection failed:",
+      error.message
+    );
+
     process.exit(1);
   });
+
+process.on("SIGINT", async () => {
+  console.log("Shutting down server...");
+  await pool.end();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("Shutting down server...");
+  await pool.end();
+  process.exit(0);
+});
