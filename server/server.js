@@ -146,6 +146,25 @@ io.on("connection", async (socket) => {
     }
   });
 
+  socket.on("clear_chat", async () => {
+    try {
+      await pool.query('DELETE FROM "message"');
+
+      console.log("Chat history cleared");
+
+      io.emit("chat_cleared");
+    } catch (error) {
+      console.error(
+        "Failed to clear chat:",
+        error.message
+      );
+
+      socket.emit("server_error", {
+        message: "Chat could not be cleared.",
+      });
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     console.log(
       `User disconnected: ${socket.id} (${reason})`

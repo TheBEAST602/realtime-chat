@@ -27,16 +27,22 @@ function App() {
       });
     };
 
+    const receiveCleared = () => {
+      setMessages([]);
+    };
+
     socket.on("connect", connect);
     socket.on("disconnect", disconnect);
     socket.on("chat_history", receiveHistory);
     socket.on("chat_message", receive);
+    socket.on("chat_cleared", receiveCleared);
 
     return () => {
       socket.off("connect", connect);
       socket.off("disconnect", disconnect);
       socket.off("chat_history", receiveHistory);
       socket.off("chat_message", receive);
+      socket.off("chat_cleared", receiveCleared);
     };
   }, []);
 
@@ -66,6 +72,18 @@ function App() {
         })
       : "";
 
+  const clearChat = () => {
+    if (!connected || messages.length === 0) return;
+
+    const confirmed = window.confirm(
+      "Clear the entire chat history for everyone? This cannot be undone."
+    );
+
+    if (confirmed) {
+      socket.emit("clear_chat");
+    }
+  };
+
   return (
     <div className="app">
       <div className="glow glow1" />
@@ -81,9 +99,20 @@ function App() {
             </div>
           </div>
 
-          <div className={`status ${connected ? "online" : "offline"}`}>
-            <span />
-            {connected ? "Online" : "Offline"}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className={`status ${connected ? "online" : "offline"}`}>
+              <span />
+              {connected ? "Online" : "Offline"}
+            </div>
+
+            <button
+              className="clear-button"
+              onClick={clearChat}
+              disabled={!connected || messages.length === 0}
+              title="Clear chat history for everyone"
+            >
+              🗑 Clear
+            </button>
           </div>
         </header>
 
@@ -107,7 +136,19 @@ function App() {
             messages.map((item) => {
               const mine = item.username === username.trim();
 
-              return (
+              const clearChat = () => {
+    if (!connected || messages.length === 0) return;
+
+    const confirmed = window.confirm(
+      "Clear the entire chat history for everyone? This cannot be undone."
+    );
+
+    if (confirmed) {
+      socket.emit("clear_chat");
+    }
+  };
+
+  return (
                 <div
                   key={
                     item.id ||
@@ -279,6 +320,27 @@ function App() {
           width: 8px;
           height: 8px;
           border-radius: 50%;
+        }
+
+        .clear-button {
+          border: 1px solid rgba(248,113,113,.25);
+          border-radius: 999px;
+          padding: 7px 11px;
+          color: #fca5a5;
+          background: rgba(239,68,68,.08);
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .clear-button:hover:not(:disabled) {
+          background: rgba(239,68,68,.18);
+          color: #fecaca;
+        }
+
+        .clear-button:disabled {
+          opacity: .35;
+          cursor: not-allowed;
         }
 
         .online {
